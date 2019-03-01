@@ -1,0 +1,82 @@
+Variable,Descripcion
+ID,ID
+MSSubClass, La clase de construccion
+MSZoning, La clasificacion general de zonificacion
+LotFrontage, Pies lineales de calle conectados a la propiedad
+LotArea, Tamano del lote en pies cuadrados
+Street, Tipo de acceso por carretera
+Alley, Tipo de acceso al callejon
+LotShape, Forma general de propiedad
+LandContour, Planitud de la propiedad
+Utilities, Tipo de utilidades disponibles
+LotConfig, Configuracion de lote
+LandSlope, Pendiente de propiedad
+Neighborhood, Ubicaciones fisicas dentro de los limites de la ciudad de Ames
+Condition1, Proximidad a la carretera principal o ferrocarril
+Condition2, Proximidad a la carretera principal o al ferrocarril (si hay un segundo presente)
+BldgType, Tipo de vivienda
+HouseStyle, Estilo de vivienda
+OverallQual, Material general y calidad de acabado
+OverallCond, Calificacion general de la condicion
+YearBuilt, Fecha de construccion original
+YearRemodAdd, Remodelacion fecha
+RoofStyle, Tipo de techo
+RoofMatl, Material del techo
+Exterior1st, Revestimiento exterior de la casa
+Exterior2nd, Revestimiento exterior en la casa (si hay mas de un material)
+MasVnrType, Tipo de chapa de mamposteria
+MasVnrArea, Area de chapa de mamposteria en pies cuadrados
+ExterQual, Calidad del material exterior
+ExterCond, Condicion actual del material en el exterior
+Foundation, Tipo de fundacion
+BsmtQual, Altura del sotano
+BsmtCond, Condicion general del sotano
+BsmtExposure, Paredes de sotanos a pie o al nivel del jardin
+BsmtFinType1, Calidad del area de sotano terminada
+BsmtFinSF1, Tipo 1 terminado pies cuadrados
+BsmtFinType2, Calidad de la segunda area terminada (si esta presente)
+BsmtFinSF2, Tipo 2 terminado pies cuadrados
+BsmtUnfSF, Pies cuadrados sin terminar del area del sotano
+TotalBsmtSF, Total de pies cuadrados de area de sotano
+Heating, Tipo de calefaccion
+HeatingQC, Calidad y condicion de calefaccion
+CentralAir, Aire acondicionado central
+Electrical, Sistema electrico
+1stFlrSF, Primer piso pies cuadrados
+2ndFlrSF, Segundo piso pies cuadrados
+LowQualFinSF, Pies cuadrados acabados de baja calidad (todos los pisos)
+GrLivArea, Pies cuadrados sobre el nivel del suelo (superficie)
+BsmtFullBath, Sotano banos completos
+BsmtHalfBath, Semisuelo de banos
+FullBath, Banos completos por encima del nivel
+HalfBath, Half baths por encima del nivel del suelo
+Bedroom, Numero de habitaciones sobre el nivel del sotano
+Kitchen, Numero de cocinas
+KitchenQual, Calidad de cocina
+TotRmsAbvGrd, Total de habitaciones por encima del grado (no incluye banos)
+Functional, Clasificacion de la funcionalidad del hogar
+Fireplaces, Numero de chimeneas
+FireplaceQu, Calidad de chimenea
+GarageType, Ubicacion del garaje
+GarageYrBlt, Ano de construccion del garaje
+GarageFinish, Acabado interior del garaje
+GarageCars, Tamano del garaje en capacidad del coche
+GarageArea, Tamano del garaje en pies cuadrados
+GarageQual, Calidad de garaje
+GarageCond, Estado del garaje
+PavedDrive, Camino pavimentado
+WoodDeckSF, Area de cubierta de madera en pies cuadrados
+OpenPorchSF, Area de porche abierto en pies cuadrados
+EnclosedPorch, Area de porche cerrado en pies cuadrados
+3SsnPorch, Area de porche de tres estaciones en pies cuadrados
+ScreenPorch, Pantalla del area del porche en pies cuadrados
+PoolArea, Area de la piscina en pies cuadrados
+PoolQC, Calidad de la piscina
+Fence, Calidad de la cerca
+MiscFeature, Caracteristica miscelanea no cubierta en otras categorias
+MiscVal,Valor de la caracteristica miscelanea (dolares)
+MoSold, Mes vendido
+YrSold, Ano vendido
+SaleType, Tipo de venta
+SaleCondition, Condicion de venta
+SalePrice , Precio de venta de la propiedad en dolares. Esta es la variable objetivo que se esta tratando de predecir
