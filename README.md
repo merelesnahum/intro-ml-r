@@ -1,6 +1,6 @@
 # intro-ml-r
 tarea
-El equipo es: 
+El equipo es:  
 Mariela Navarro,  
 Karen Gaona,  
 Manuel Zamora,  
