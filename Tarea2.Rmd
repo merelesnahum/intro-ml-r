@@ -1,0 +1,442 @@
+---
+title: "Ejercicio de Precio de Casas"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+##INTRODUCCIÓN
+
+El siguiente trabajo es sobre un ejercicio que se encuentra en Kaggle sobre la estimación del precio de las casas en Ames, Iowa, basado en diferentes variables con la finalidad de poner en práctica lo aprendido en el Módulo de Machine Learning [Ver-Kaggle](https://www.kaggle.com/c/house-prices-advanced-regression-techniques). 
+
+##DIMENSIONAMIENTO DE LAS BASES
+
+La base de datos de desarrollo "train" tiene la siguiente dimension:
+
+```{r}
+train <- as.data.frame(read.csv("train.csv",header=TRUE))
+
+print(paste0("Número de renglones ",nrow(train)))
+print(paste0("Número de columnas ",ncol(train)))
+```
+
+La base de datos de validación "test" tiene la siguiente dimensión:
+
+```{r}
+test <- as.data.frame(read.csv("test.csv",header=TRUE))
+
+print(paste0("Número de renglones ",nrow(test)))
+print(paste0("Número de columnas ",ncol(test)))
+```
+
+Podemos ver que la base de datos "test" tiene 1 columna menos que la base "train". Esto se debe a las condiciones que Kaggle esteblece para este proyecto: El output de la base de validación no se proveerá, se tiene que enviar el modelo a Kaggle para que regrese el performance del mismo y Kaggle enviará el score final.
+
+##DESCRIPCIÓN DE VARIABLES
+
+A continuación veremos cuáles son las variables con las que cuenta nuestra base de datos de desarrollo:
+
+```{r}
+library(knitr)
+library(readxl)
+library(dbplyr)
+library(magrittr)
+library(corrplot)
+vars<-read.csv("vars.csv", header=TRUE, sep=",", fileEncoding = "utf8")
+
+desc<-data.frame(Variables = names(train),
+           Descripcion=vars[,2],
+           Clase = sapply(train, class),
+           Valores_Posibles= sapply(train, function(x) paste0(head(x),  collapse = ", ")),
+           row.names = NULL)
+kable(desc)
+```
+
+Podemos ver que hay varias variables que R lee como entero cuando en realidad son factor. Procederemos a hacer el cambio de nivel de dichas variables.
+
+```{r}
+
+train[,'Id']<-as.factor(train[,'Id'])
+train[,'MSSubClass']<-as.factor(train[,'MSSubClass'])
+train[,'OverallQual']<-as.factor(train[,'OverallQual'])
+train[,'OverallCond']<-as.factor(train[,'OverallCond'])
+train[,'YearBuilt']<-as.factor(train[,'YearBuilt'])
+train[,'YearRemodAdd']<-as.factor(train[,'YearRemodAdd'])
+train[,'GarageYrBlt']<-as.factor(train[,'GarageYrBlt'])
+train[,'MoSold']<-as.factor(train[,'MoSold'])
+train[,'YrSold']<-as.factor(train[,'YrSold'])
+
+desc2<-data.frame(Variables = names(train),
+           Descripcion=vars[,2],
+           Clase = sapply(train, class),
+           Valores_Posibles= sapply(train, function(x) paste0(head(x),  collapse = ", ")),
+           row.names = NULL)
+kable(desc2)
+```
+Vector de variables numéricas:
+
+```{r}
+
+var_num <- c("LotFrontage","LotArea","MasVnrArea","BsmtFinSF1","BsmtFinSF2","BsmtUnfSF","TotalBsmtSF","X1stFlrSF","X2ndFlrSF","LowQualFinSF","GrLivArea","BsmtFullBath","BsmtHalfBath","FullBath","HalfBath","BedroomAbvGr","KitchenAbvGr","TotRmsAbvGrd","Fireplaces","GarageCars","GarageArea","WoodDeckSF","OpenPorchSF","EnclosedPorch","X3SsnPorch","ScreenPorch","PoolArea","MiscVal")
+
+```
+
+##ESTADÍSTICOS DE SUMARIZACIÓN
+
+A continuación veremos estadísticos básicos de sumarización de nuestra base de desarrollo "train":
+
+```{r}
+summary(train)
+```
+
+Se observa lo siguiente:
+
+- Hay algunas variables que contienen muchos valores nulos (ej. "PoolQC", "Fence", "MiscFeature"..)
+- Hay algunas variables categóricas que agrupan la mayoría de los registros en una sola categoría (ej. "Street", "Condition2"..), hay alta probabilidad de que éstas variables no sean significativas cuando se apliquen los modelos de regresión.
+
+
+##VALORES AUSENTES
+
+A continuación se analizará a detalle el porcentaje de valores ausentes en cada variable:
+
+```{r}
+library(tidyverse)
+map(train, ~sum(is.na(.))/nrow(train)*100)
+```
+
+Se observa que la variable "Alley" tiene 93% de valores ausentes, la variable "Fence" un 80%, "MiscFeature" 96%, "PoolQC" un 99% y "FireplaceQu" un 47% por lo que serán excluidas del análisis.
+
+```{r}
+train <- train[,!colnames(train)=="Alley"]
+train <- train[,!colnames(train)=="Fence"]
+train <- train[,!colnames(train)=="MiscFeature"]
+train <- train[,!colnames(train)=="PoolQC"]
+train <- train[,!colnames(train)=="FireplaceQu"]
+```
+
+```{r}
+train_miss <- na.omit(train)
+```
+
+
+1) Verificar si en los registros donde no existen valores ausentes, las variables numéricas tienen correlación con otras.
+
+```{r}
+train_miss_num <- train_miss[,var_num]
+correlacion<-round(cor(train_miss_num),1)  
+```
+
+La variable "LotFrontage" que es la que presenta más valores ausentes (18% de los registros) debería estar poblada ya que indica el total de Pies lineales de calle conectados a la propiedad por lo que se tratará de estimar mediante imputación.  Se observa que ésta variable presenta una correlación de 0.5 con la variable "X1stFlrSF" que indica el total de Pies Cuadrados del primer piso por lo que se utilizará ésta segunda variable para estimar el valor de la primera.
+
+```{r}
+#Gráfica de Correlación de "LotFrontage" y "1stFlrSF"
+plot(train_miss$LotFrontage, train_miss$X1stFlrSF, xlab="LotFrontage", ylab="X1stFlrSF", pch=18, col="cyan3")
+```
+Se asignará el promedio de Y para cada valor de X ausente..
+
+```{r}
+LF_new <- train_miss %>% 
+  group_by(LotFrontage) %>% 
+  summarize(mean(X1stFlrSF))
+
+colnames(LF_new)[colnames(LF_new)=="mean(X1stFlrSF)"] <- "X1stFlrSF"
+colnames(LF_new)[colnames(LF_new)=="LotFrontage"] <- "New_LotFrontage"
+
+# Nueva gráfica de Correlación de "LotFrontage" y "1stFlrSF"
+plot(LF_new$New_LotFrontage, LF_new$X1stFlrSF, xlab="New_LotFrontage", ylab="X1stFlrSF", xlim=c(0,200), ylim=c(0,3000), pch=18, col="cyan3")
+```
+
+```{r}
+train_a <- merge(x = train, y = LF_new, by = "X1stFlrSF", all.x = TRUE)
+train_a$LotFrontage = ifelse(is.na(train_a$LotFrontage), train_a$New_LotFrontage, train_a$LotFrontage)
+```
+
+
+Se verifican los valores faltantes con esta corrección..
+
+```{r}
+train_a <- train_a[,!colnames(train_a)=="Alley"]
+train_a <- train_a[,!colnames(train_a)=="Fence"]
+train_a <- train_a[,!colnames(train_a)=="MiscFeature"]
+train_a <- train_a[,!colnames(train_a)=="PoolQC"]
+train_a <- train_a[,!colnames(train_a)=="FireplaceQu"]
+train_a <- train_a[,!colnames(train_a)=="New_LotFrontage"]
+
+train_miss_new <- na.omit(train_a)
+```
+
+Debido a que el procedimiento anterior no corrigió los valores ausentes y siguen faltando al rededor del 25% de los valores, se procederá a eliminar la variable.
+
+```{r}
+train <- train[,!colnames(train)=="LotFrontage"]
+```
+
+
+##NIVELES DE LAS VARIABLES - FACTOR
+
+A continuación eliminaremos las variables categóricas cuya variación en niveles es mínima y podría generar un problema a la hora de la generación del modelo.
+
+```{r}
+train <- train[,!colnames(train)=="Street"]
+train <- train[,!colnames(train)=="Utilities"]
+train <- train[,!colnames(train)=="Condition2"]
+train <- train[,!colnames(train)=="RoofMatl"]
+train <- train[,!colnames(train)=="OverallCond"]
+train <- train[,!colnames(train)=="OverallQual"]
+train <- train[,!colnames(train)=="Exterior1st"]
+train <- train[,!colnames(train)=="ExterCond"]
+train <- train[,!colnames(train)=="Heating"]
+
+
+
+
+```
+
+Posteriormente se eliminarán todos los registros con valores faltantes en las siguientes variables:  "GarageType"	5.5%, "GarageYrBlt"	5.5%, "GarageFinish"	5.5%, "GarageQual"	5.5%, "GarageCond"	5.5%, "BsmtExposure"	2.6%, "BsmtFinType2"	2.6%, "BsmtQual"	2.5%, "BsmtCond"	2.5%, "BsmtFinType1"	2.5%, "MasVnrType"	0.5%, "MasVnrArea"	0.5%, "Electrical"	0.1%.
+
+```{r}
+train_miss <- na.omit(train)
+```
+
+Con lo anterior logramos quedarnos con 1,338 registros (92% de las observaciones) para el desarrollo del modelo.
+
+
+##CREACIÓN DE MUESTRAS
+
+Debido a la ausencia de variable objetivo en la base de validación "test", haremos una partición de la base "train" en 2: train2 y test2, como se muestra a continuación:
+
+```{r}
+set.seed(123)
+library(gtools)
+#match(train$MSZoning,unique(mixedsort(train$MSZoning)))
+#train$MSZoning2 <-as.numeric(factor(train$MSZoning, #levels=unique(mixedsort(train$MSZoning))))
+
+smp_size <- floor(0.75 * nrow(train_miss))
+train_ind <- sample(seq_len(nrow(train_miss)), size = smp_size)
+
+train_smp <- train_miss[train_ind, ]
+test_smp <- train_miss[-train_ind, ]
+
+```
+
+
+
+##ANÁLISIS DE REGRESIÓN LINEAL MÚLTIPLE
+
+Ahora procederemos a hacer un análisis de regresión lineal múltiple, donde nuestra variable objetivo será "SalePrice".
+
+1) MODELO 1. La primera corrida del modelo considerará los ajustes realizados en la sección anterior:
+
+```{r}
+library(ISLR)
+library(ggplot2)
+library(MASS)
+library(DAAG)
+
+baseline <- lm(SalePrice ~ MSSubClass+	MSZoning+	LotArea+		LotShape+	LandContour+	LotConfig+	LandSlope+	Neighborhood+	Condition1+	BldgType+	HouseStyle+	YearBuilt+	YearRemodAdd+	RoofStyle+		Exterior2nd+	MasVnrType+	MasVnrArea+	ExterQual+	Foundation+	BsmtQual+	BsmtCond+	BsmtExposure+	BsmtFinType1+	BsmtFinSF1+	BsmtFinType2+	BsmtFinSF2+	BsmtUnfSF+	TotalBsmtSF+	HeatingQC+	CentralAir+	Electrical+	X1stFlrSF+	X2ndFlrSF+	LowQualFinSF+	GrLivArea+	BsmtFullBath+	BsmtHalfBath+	FullBath+	HalfBath+	BedroomAbvGr+	KitchenAbvGr+	KitchenQual+	TotRmsAbvGrd+	Functional+	Fireplaces+	GarageType+	GarageYrBlt+	GarageFinish+	GarageCars+	GarageArea+	GarageQual+	GarageCond+	PavedDrive+	WoodDeckSF+	OpenPorchSF+	EnclosedPorch+	X3SsnPorch+	ScreenPorch+	PoolArea+	MiscVal+	MoSold+	YrSold+	SaleType+	SaleCondition
+, data=train_smp)
+
+
+print(summary(baseline))
+
+ggplot(mapping=aes(x=baseline$residuals)) + geom_histogram()
+
+print(mean(baseline$residuals))
+print(sd(baseline$residuals))
+print(mean(baseline$residuals^2))
+
+
+#print(mean((predict(baseline, test_smp) - test_smp$SalePrice)^2))
+
+```
+
+Se observa lo siguiente:
+- Los errores se distribuyen de manera Normal con media cero.
+- La R2 presenta un valor de 0.92 (cercano a 1 lo que indica que el modelo parece ajustar bien).
+- La R2 ajustada presenta un valor de 0.85 (es un valor igualmente alto).
+- El p-value muestra un valor cercano a cero.
+
+
+2) MODELO 2. La segunda corrida del modelo se reaizará con ayuda del Stepwise para definir las variables más relevantes para el modelo:
+
+```{r}
+#Stepwise
+step <- stepAIC(baseline, direction="both",trace=FALSE)
+print(summary(step))
+
+#cv.lm(df=train2, fit, m=5)
+#step <- stepAIC(fit, direction="both")
+
+```
+
+Se observa lo siguiente:
+- El modelo dejó afuera aquellas variables cuyo p-value es muy alto ya que no contribuyen y seleccionó aquellas que generan valor al modelo.
+- La R2 presenta un valor de 0.88 y aunque es un poco más baja que en la corrida anterior, la R2 ajustada presenta un valor mejor de 0.86
+- El p-value muestra un valor cercano a cero, lo que indica que al menos uno de los predictores introducidos en el modelo está relacionado con la variable respuesta.
+- El estadístico F tiene un mejor performance en esta corrida.
+
+
+```{r}
+plot(step)
+```
+
+Se observa que los resiudales ajustan de manera lineal pero se observan valores atípicos que podrían afectar el performance del modelo.
+
+
+3) MODELO 3. La tercera corrida del modelo se hará mediante una regresión Ridge
+
+```{r}
+library(glmnet)
+
+excluye <- c("SalePrice")
+
+train_x <- data.matrix(train_smp[, !(names(train_smp) %in% excluye)])
+test_y <- data.matrix(test_smp)
+test_y2 <- data.matrix(test_smp[,"SalePrice"])
+
+lambdas <- 1:150
+
+ridge <- glmnet(train_x, train_smp$SalePrice, alpha=0, lambda=lambdas)
+
+cv_fit <- cv.glmnet(train_x, train_smp$SalePrice, alpha = 0, lambda = lambdas)
+
+#plot(cv_fit)
+
+opt_lambda <- cv_fit$lambda.min
+opt_lambda
+
+fit <- cv_fit$glmnet.fit
+summary(fit)
+
+y_predicted <- predict(fit, s = opt_lambda, newx = train_x)
+
+# Sum of Squares Total and Error
+sst <- sum((train_smp$SalePrice - mean(train_smp$SalePrice))^2)
+sse <- sum((y_predicted - train_smp$SalePrice)^2)
+
+# R squared
+rsq <- 1 - sse / sst
+print(rsq)
+print(sse)
+
+ggplot(mapping=aes(x=(y_predicted - train_smp$SalePrice))) + geom_histogram()
+
+```
+
+
+
+4) MODELO 4. La cuarta corrida del modelo se hará mediante una regresión Lasso
+
+```{r}
+lambdas <- 1:75/100
+
+lasso <- glmnet(train_x, train_smp$SalePrice, alpha=1, lambda=lambdas)
+print(summary(lasso))
+
+cv_fit2 <- cv.glmnet(train_x, train_smp$SalePrice, alpha = 1, lambda = lambdas)
+
+#plot(cv_fit)
+
+opt_lambda2 <- cv_fit2$lambda.min
+opt_lambda2
+
+fit2 <- cv_fit2$glmnet.fit
+summary(fit2)
+
+y_predicted2 <- predict(fit2, s = opt_lambda2, newx = train_x)
+
+# Sum of Squares Total and Error
+sst2 <- sum((train_smp$SalePrice - mean(train_smp$SalePrice))^2)
+sse2 <- sum((y_predicted2 - train_smp$SalePrice)^2)
+
+# R squared
+rsq2 <- 1 - sse2 / sst2
+print(rsq2)
+print(sse2)
+
+ggplot(mapping=aes(x=(y_predicted2 - train_smp$SalePrice))) + geom_histogram()
+
+
+```
+
+
+
+
+```{r}
+bc <- boxcox(mpg~weight, data=Auto)
+lambda <- bc$x[bc$y == max(bc$y)]
+mod.lin <- lm(((mpg^lambda-1)/lambda)^(1/lambda)~weight, Auto)
+
+print(summary(mod.lin))
+
+ggplot(mapping=aes(x=mod.lin$residuals)) + geom_histogram(bins=20)
+print(mean(mod.lin$residuals))
+print(sd(mod.lin$residuals))
+
+ggplot(Auto, (aes(x=mpg, y=mod.lin$residuals))) + geom_point()
+```
+```{r}
+ggplot(Auto, aes(x=displacement, y=mpg, group=as.factor(cylinders), color=as.factor(cylinders))) +
+  geom_point() +
+  geom_smooth(method=lm, se=F)
+
+```
+
+
+El modelo 2 es el que mejor ajusta, se aplicará el mismo a la base Test para medir su presición.
+
+```{r}
+pred <- (predict(object = step, newdata = test_smp))
+pred2 <- cbind(p=as.data.frame(pred))
+pred2 <- cbind(Id = rownames(pred2),pred2)
+rownames(pred2)<- 1:nrow(pred2)
+
+
+basenew <- merge(x = test_smp, y = pred2, by = "Id", all.x = TRUE)
+
+# Sum of Squares Total and Error
+sst <- sum((basenew$SalePrice - mean(basenew$SalePrice))^2)
+sse <- sum((basenew$SalePrice - basenew$pred)^2)
+
+# R squared
+rsq <- 1 - sse / sst
+print(rsq)
+print(sse)
+
+ggplot(mapping=aes(x=(y_predicted - train_smp$SalePrice))) + geom_histogram()
+
+```
+
+Se observa que la R2 también ajusta correctamente por lo cuál este será el modelo elegido para este ejercicio y se aplicará a la base a evaluar.
+
+```{r}
+
+test[,'Id']<-as.factor(test[,'Id'])
+test[,'MSSubClass']<-as.factor(test[,'MSSubClass'])
+test[,'OverallQual']<-as.factor(test[,'OverallQual'])
+test[,'YearBuilt']<-as.factor(test[,'YearBuilt'])
+test[,'YearRemodAdd']<-as.factor(test[,'YearRemodAdd'])
+test[,'GarageYrBlt']<-as.factor(test[,'GarageYrBlt'])
+test[,'MoSold']<-as.factor(test[,'MoSold'])
+test[,'YrSold']<-as.factor(test[,'YrSold'])
+
+
+test <- test[,!colnames(test)=="Alley"]
+test <- test[,!colnames(test)=="Fence"]
+test <- test[,!colnames(test)=="MiscFeature"]
+test <- test[,!colnames(test)=="PoolQC"]
+test <- test[,!colnames(test)=="FireplaceQu"]
+test <- test[,!colnames(test)=="LotFrontage"]
+test <- test[,!colnames(test)=="Street"]
+test <- test[,!colnames(test)=="Utilities"]
+test <- test[,!colnames(test)=="Condition2"]
+test <- test[,!colnames(test)=="RoofMatl"]
+test <- test[,!colnames(test)=="OverallQual"]
+
+pred_final <- (predict(object = step, newdata = test))
+pred_final2 <- cbind(p=as.data.frame(pred_final))
+pred_final2 <- cbind(Id = rownames(pred_final2),pred_final2)
+rownames(pred_final2)<- 1:nrow(pred_final2)
+
+write.csv(pred_final2, file="Pred_Final.csv")
+```
