@@ -1,5 +1,5 @@
 # intro-ml-r
-tarea
+tarea  
 El equipo es:  
 Mariela Navarro  
 Karen Gaona  
